@@ -59,7 +59,7 @@ class CallbackQueue(queue.Queue):
   
   
 obs = Observatory("Canberra")
-dss43 = DSN_Antenna(obs,43,hardware=True)
+dss43 = DSN_Antenna(obs, 43, hardware=True)
 cb_q = CallbackQueue()
 cb_receiver = CallbackReceiver(cb_q)
 

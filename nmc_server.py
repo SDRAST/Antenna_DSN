@@ -92,7 +92,6 @@ import time
 import errno
 
 import Pyro5
-from Pyro5.api import SerializerBase
 import ephem
 import h5py
 import numpy as np
