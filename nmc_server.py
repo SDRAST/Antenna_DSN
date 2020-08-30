@@ -200,7 +200,7 @@ class NMCServer(Pyro5Server):
     def __init__(self, wsn=0, site="GDSCC", dss="14", simulated=False,
                  logfile=None, logLevel=logging.INFO, logger=None):
         """
-        Create APC server, including any socket connections (provided not in simulation mode).
+        Create APC server, including any socket connections
 
         Socket connections are provided not in simulation mode.
 
@@ -453,7 +453,7 @@ class NMCServer(Pyro5Server):
     @auto_test(args=("AzimuthAngle",), returns=dict)
     def get(self, *params, **kwargs):
         """
-        Get any parameter that is being monitored (`monitem`) in NMC control script.
+        Get any parameter being monitored (`monitem`) in NMC control script.
         """
         if not self.server_initialized:
             self.get_params()
