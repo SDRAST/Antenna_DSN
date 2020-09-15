@@ -90,6 +90,7 @@ class DSN_Antenna(MC.Antenna.Telescope, MC.DeviceReadThread, hdf5.HDF5Mixin):
 
     def __getattr__(self, name):
         if self.hardware is not None:
+            self.hardware._pyroClaimOwnership()
             return getattr(self.hardware, name)
 
     @property

@@ -21,80 +21,112 @@ This is the way to connect to the server with a Pyro5 client:
     In [7]: antenna = DSN_Antenna(observatory, dss=43, hardware=hardware["Antenna"])
     In [8]: print antenna.help()
 
+Methods
+=======
+
     Server methods
     --------------
-    connect_to_hardware(wsn, sock_port=None)
+    ``connect_to_hardware(wsn, sock_port=None)``
       Connect to APC via NMC wsn when not in simulator mode.
-    simulate()
+    ``simulate()``
       Turn on simulation mode.
-    k_band_fwhm(freq=22000)
+    ``k_band_fwhm(freq=22000)``
       70-m beamwidth in millideg
-    slew_to_source(source_name)
+    ``slew_to_source(source_name)``
       Slew to source position
-    single_scan(tperscan, eloffset, xeloffset, *args)
+    ``single_scan(tperscan, eloffset, xeloffset, *args)``
       Perform a single scan, or moving from one feed to another.
-    tipping_function(status, pm_callback_dict)
+    ``tipping_function(status, pm_callback_dict)``
       Perform tipping. Steps:
        1) Go to stow position 15 degrees,
        2) Scan to 88 degrees in the source direction,
        3) Record PM data and
       plot vs elevation
-    close()
+    ``close()``
 
     Antenna methods
     ---------------
-    command(command_str, recv_val=128)
+    ``command(command_str, recv_val=128)``
       Send an arbitrary command str. Use this method with extreme caution.
       This should be properly formatted to reflect what the antenna server
       wants to see.
-    move(position, axis='EL')
+    ``move(position, axis='EL')``
       Send MOVE command to antenna
-    get_hadec(s)
+    ``get_hadec(s)``
       Get Hadec data from the antenna.
-    get_azel()
+    ``get_azel()``
       Get azimuthal and elevation information from the antenna.
-    el_offset
+    ``el_offset``
       Current elevation offset
-    xel_offset
+    ``xel_offset``
       Current cross-elevation offset
-    get_offsets()
+    ``get_offsets()``
       Get offset data from the telescope
-    set_offset(axis1='EL', axis2='XEL', value1=0, value2=0)
+    ``set_offset(axis1='EL', axis2='XEL', value1=0, value2=0)``
       Set the antenna offset.
-    set_offset_one_axis(axis, value)
+    ``set_offset_one_axis(axis, value)``
       This does the same thing as the set_offset method, except that it sets
       offset one axis at a time.
-    onsource()
+    ``onsource()``
       Determine whether the antenna is onsource.
-    clr_rate(reset_param)
+    ``clr_rate(reset_param)``
       request rate parameter (az, el, dec, xel or xdec) to be reset to zero.
-    stop()
+    ``stop()``
       Stop the telescope from moving
-    stow()
+    ``stow()``
       Stow the telescope
-    clr_offsets()
+    ``clr_offsets()``
       Reset offsets to zero.
-    ap_trk()
+    ``ap_trk()``
       Put antenna in track mode
-    set_rate(axis, rate)
+    ``set_rate(axis, rate)``
       Set a slew rate for the antenna along one axis.
-    feed_change(flag, eloffset, xeloffset)
+    ``feed_change(flag, eloffset, xeloffset)``
       Change the feed for two beam nodding.
-    point_onsource(source_name, source_ra, source_dec):
+    ``point_onsource(source_name, source_ra, source_dec):``
       point onsource
-    point_source(coord_type, long_coord, lat_coord):
+    ``point_source(coord_type, long_coord, lat_coord):``
       Point to arbitrary coordinates.
+
+Notes
+=====
+  String Handling
+  ---------------
+  In Python3, there is a clear distinction between ``bytes`` and ``unicode``, 
+  whereas Python2 was ver forgiving.
+  The default type of a '' or "" enclosed value is ``unicode``.  Binary data are
+  are ``bytes``.  If you want the binary representation of a string to be the
+  usual 8-bit value, as in ASCII, then designated the value as ``b'sometext'``.
+  However, the default is equivalent to ``u'sometext'``, which means that each
+  character is represented by 8 bytes (64 bits) in some encoding.
+  
+  Pyro5 is string based.  This means that ``bytes`` are encoded as text when
+  sent as a Pyro5 message.  For example ``b'temperature'`` is converted to the
+  JSON string ``{'data': 'dGVtcGVyYXR1cmU=',     'encoding': 'base64'}`` which
+  looks like a ``dict`` to Python.  On receipt, this must be turned back into
+  bytes::
+    In [16]: import serpent
+    In [18]: serpent.tobytes({'data': 'dGVtcGVyYXR1cmU=', 
+                              'encoding': 'base64'})                             
+    Out[18]: b'temperature'
+
+  The reason for sending text as ``bytes`` might be that ``socket`` objects send
+  and receive ``bytes``.  Trying to send ``unicode`` text results in an error.
+  However, the cleanest way to deal with this is to use ``unicode`` for Pyro5
+  and convert it to ``bytes`` before sending it through a socket.
+  
 """
+import ephem
+import errno
+import h5py
 import logging
+import numpy as np
+import Pyro5
+import serpent
 import socket
 import sys
 import time
-import errno
 
-import Pyro5
-import ephem
-import h5py
-import numpy as np
 
 from MonitorControl.Antenna.DSN.simulator import FakeAntenna
 from support.pyro.socket_error import register_socket_error
@@ -427,9 +459,9 @@ class NMCServer(Pyro5Server):
         """
         if not self._simulated:
             # self.logger.debug("command: sent '%s'", command_str)
-            self.sock.sendall(command_str)
+            self.sock.sendall(command_str.encode())
             # self.logger.debug("command: waiting for response")
-            resp = self.sock.recv(recv_val)
+            resp = self.sock.recv(recv_val).decode()
             # self.logger.debug("command: received '%s'", resp)
             return resp
         else:
@@ -447,20 +479,42 @@ class NMCServer(Pyro5Server):
     @auto_test(returns=list)
     def get_params(self):
         self.server_initialized = True
+        self.logger.debug("get_params: sending GET_PARAMS")
         params = self.command("GET_PARAMS\n", recv_val=1024)
+        self.logger.debug("get_params: returned %s", params)
         return params.split(", ")
 
     @auto_test(args=("AzimuthAngle",), returns=dict)
-    def get(self, *params, **kwargs):
+    def get(self, *args, **kwargs):
         """
         Get any parameter being monitored (`monitem`) in NMC control script.
+        
+        Args:
+            args:   tuple with parameter names to get
+            kwargs: keyword arguments, usually none
         """
+        params = []
+        for arg in args:
+          if type(arg) == dict:
+            # recover from Pyro5 serialization if necessary
+            params.append(serpent.tobytes(arg))
+          else:
+            params.append(arg)
+        self.logger.debug("get: params = %s", params)
+        self.logger.debug("get: kwargs = %s", kwargs)
         if not self.server_initialized:
+            self.logger.debug("get: initializing")
             self.get_params()
         recv_val = kwargs.get("recv_val", 1024)
+        self.logger.debug("get: recv_val = %s", recv_val)
+        return_vals = {}
+        # default values
         return_vals = {params[i]:None for i in range(len(params))}
+        self.logger.debug("get: return_vals = %s", return_vals)
         if not self._simulated:
             self.logger.debug("get: params: {}".format(params))
+            # at this point ``params`` is byte objects, but we need to strings
+            # for manipulation
             if self.sock is not None:
                 cmd = "PARAM {}\n".format(" ".join(params))
                 self.logger.debug("get: sending cmd: {}".format(cmd))
@@ -468,10 +522,11 @@ class NMCServer(Pyro5Server):
                 self.logger.debug("get: resp: {}".format(resp))
                 resp_list = resp.split(",")
                 if len(resp_list) == len(params):
-                    return_vals = {params[i]:resp_list[i].strip() for i in range(len(params))}
+                    return_vals = {params[i]:resp_list[i].strip()
+                                                    for i in range(len(params))}
                 else:
                     self.logger.error(
-                    ("Discrepency between number of parameters requested and number returned: "
+                 ("Discrepency between number of parameters requested and number returned: "
                                        ""))
         else:
           return {"AzimuthAngle": 60, "ElevationAngle": 45}
@@ -936,7 +991,8 @@ class NMCServer(Pyro5Server):
             ra_precessed = float(body.ra)*180./np.pi
             dec_precessed = float(body.dec)*180./np.pi
 
-        self.logger.debug("point_radec: sending ra: {}, dec: {}".format(ra_precessed, dec_precessed))
+        self.logger.debug("point_radec: sending ra: {}, dec: {}".format(
+                                                   ra_precessed, dec_precessed))
         cmd = "ANTENNA RADEC {:.6f} {:.6f}\n".format(ra_precessed, dec_precessed)
         self.logger.debug("point_radec: sending command {}".format(cmd))
         resp = self.command(cmd)
