@@ -116,6 +116,7 @@ Notes
   and convert it to ``bytes`` before sending it through a socket.
   
 """
+import datetime
 import ephem
 import errno
 import h5py
@@ -198,6 +199,8 @@ point_source(coord_type, long_coord, lat_coord):
 """
 register_socket_error()
 
+def logtime():
+  return datetime.datetime.utcnow().strftime("%H:%M:%S.%f")[:-3]
 
 @Pyro5.api.expose
 class NMCServer(Pyro5Server):
@@ -306,7 +309,7 @@ class NMCServer(Pyro5Server):
         Access any parameter in status attribute dictionary in a thread safe
         manner.
         """
-        self.logger.debug("get_status: args: {}".format(args))
+        self.logger.debug("get_status({}): args: {}".format(logtime(), args))
         with self.lock:
             if len(args) == 0:
                 return self.status
@@ -322,7 +325,9 @@ class NMCServer(Pyro5Server):
         Update status attribute dictionary in a thread safe manner.
         """
         if len(args) == 0:
-            self.logger.debug("_update_status: Need to provide some parameter to update")
+            self.logger.debug(
+            "_update_status({}): Give some parameter to update".format(
+                                                                     logtime()))
         else:
             update_val = args[-1]
             sub = self.status[args[0]]
@@ -368,7 +373,8 @@ class NMCServer(Pyro5Server):
 
         @return: None
         """
-        self.logger.debug("connect_to_hardware: on workstation {}".format(wsn))
+        self.logger.debug("connect_to_hardware({}): on workstation {}".format(
+                                                                logtime(), wsn))
         if not sock_port:
             sock_port = self._sock_port
         self._site = site
@@ -421,7 +427,8 @@ class NMCServer(Pyro5Server):
 
         @return: None
         """
-        self.logger.debug("simulate: connecting to simulator")
+        self.logger.debug("simulate({}): connecting to simulator".format(
+                                                                     logtime()))
         self.simulator = FakeAntenna()
         self._wsn = self.simulator.wsn
         self._simulated = True
@@ -479,9 +486,9 @@ class NMCServer(Pyro5Server):
     @auto_test(returns=list)
     def get_params(self):
         self.server_initialized = True
-        self.logger.debug("get_params: sending GET_PARAMS")
+        self.logger.debug("get_params({}): sending GET_PARAMS".format(logtime()))
         params = self.command("GET_PARAMS\n", recv_val=1024)
-        self.logger.debug("get_params: returned %s", params)
+        self.logger.debug("get_params(%s): returned %s", logtime(), params)
         return params.split(", ")
 
     @auto_test(args=("AzimuthAngle",), returns=dict)
@@ -500,17 +507,16 @@ class NMCServer(Pyro5Server):
             params.append(serpent.tobytes(arg))
           else:
             params.append(arg)
-        self.logger.debug("get: params = %s", params)
-        self.logger.debug("get: kwargs = %s", kwargs)
+        self.logger.debug("get(%s): params = %s", logtime(), params)
+        self.logger.debug("get(%s): kwargs = %s", logtime(), kwargs)
         if not self.server_initialized:
-            self.logger.debug("get: initializing")
+            self.logger.debug("get({}): initializing".format(logtime()))
             self.get_params()
         recv_val = kwargs.get("recv_val", 1024)
-        self.logger.debug("get: recv_val = %s", recv_val)
         return_vals = {}
         # default values
         return_vals = {params[i]:None for i in range(len(params))}
-        self.logger.debug("get: return_vals = %s", return_vals)
+        self.logger.debug("get(%s): return_vals = %s", logtime(), return_vals)
         if not self._simulated:
             self.logger.debug("get: params: {}".format(params))
             # at this point ``params`` is byte objects, but we need to strings
@@ -551,7 +557,8 @@ class NMCServer(Pyro5Server):
         """
         if not self._simulated:
             cmd = "GET_HADEC\n"
-            self.logger.debug("get_hadec: sending command {}".format(cmd))
+            self.logger.debug("get_hadec({}): sending command {}".format(
+                                                                logtime(), cmd))
             hadec = self.command(cmd, recv_val=1024)
             self.logger.debug("get_hadec: response: {}".format(hadec))
             try:
@@ -584,12 +591,13 @@ class NMCServer(Pyro5Server):
 
         The response is a dict::
                keys: az, az_rad, el, wrap, timing.
-               values: azimuthal, azimuthal (in radians), elevation, wrap, timing
+               values: azimuthal, azimuthal (in rads), elevation, wrap, timing
 
         @return: dict
         """
         params = ["AzimuthAngle","ElevationAngle"]
-        self.logger.debug("get_azel: getting params {}".format(params))
+        self.logger.debug("get_azel({}): getting params {}".format(
+                                                             logtime(), params))
         resp = self.get(*params)
         return {key:float(resp[key]) for key in resp}
 
@@ -604,14 +612,16 @@ class NMCServer(Pyro5Server):
         xel = az*cos(el) -- from Shinji
         """
         params = ["ElevationPositionOffset", "CrossElevationPositionOffset"]
-        self.logger.debug("get_offsets: getting params {}".format(params))
+        self.logger.debug("get_offsets({}): getting params {}".format(
+                                                             logtime(), params))
         resp = self.get(*params)
         resp = {1000*float(resp[key]) for key in resp}
         return resp
 
     @auto_test(args=("EL", "XEL", 0.0, 0.0),
                         returns=['COMPLETED', 'COMPLETED'])
-    def set_offset(self, axis1='EL', axis2='XEL', value1=0, value2=0, wait_time=None):
+    def set_offset(self, axis1='EL', axis2='XEL', value1=0, value2=0,
+                         wait_time=None):
         """
         Set the antenna offset.
 
@@ -699,7 +709,8 @@ class NMCServer(Pyro5Server):
         antenna_status_bool = determine_antenna_status(params_before["Status"])
         time.sleep(2.0)
         params_after = self.get(*param_names)
-        self.logger.debug("onsource: onsource params after: {}".format(params_after))
+        self.logger.debug("onsource({}): onsource params after: {}".format(
+                                                       logtime(), params_after))
 
         el_prev = float(params_before["ElevationAngle"])
         el_cur = float(params_after["ElevationAngle"])
@@ -829,7 +840,8 @@ class NMCServer(Pyro5Server):
         return_vals = {"success":"COMPLETED"}
         if not self._simulated:
             cmd = "ANTENNA MOVE {} {}\n".format(axis, position)
-            self.logger.debug("move: sending command {}".format(cmd))
+            self.logger.debug("move({}): sending command {}".format(
+                                                                logtime(), cmd))
             resp = self.command(cmd)
             self.logger.debug("move: Response from server: {}".format(resp))
             resp = resp.strip()
@@ -967,7 +979,8 @@ class NMCServer(Pyro5Server):
                 coordinates that are already precessed? ("J2000")
         Returns:
         """
-        self.logger.debug("point_radec: ra: {}, dec: {}, epoch: {}".format(ra, dec, epoch))
+        self.logger.debug("point_radec({}): ra: {}, dec: {}, epoch: {}".format(
+                                                     logtime(), ra, dec, epoch))
 
         if epoch.lower() not in ["j2000", "now"]:
             msg = "provided epoch {} is not either J2000 or now".format(epoch)
@@ -1089,7 +1102,8 @@ class NMCServer(Pyro5Server):
         """
         Close down the socket connection without killing the connection to the Pyro5 Daemon.
         """
-        self.logger.debug("close_socket: Closing down socket connection")
+        self.logger.debug(
+           "close_socket({}): Closing down socket connection".format(logtime()))
         if not self._simulated:
             try:
                 self.sock.close()
@@ -1103,23 +1117,6 @@ class NMCServer(Pyro5Server):
         """
         self.close_socket()
         super(NMCServer, self).close()
-
-    @Pyro5.api.expose
-    @Pyro5.api.oneway
-    def LRM(self, duration, callback):
-        """
-        test of callback with long-running method
-        """
-        self.logger.debug("LRM: called for %d", duration)
-        callback._pyroClaimOwnership()
-        time.sleep(duration)
-        self.logger.debug("LRM: sleep finished")
-        try:
-            callback.finished(self.LRM.__name__, duration)
-        except Exception:
-            self.logger.error("LRM: callback.finished failed")
-            self.logger.error("".join(Pyro5.errors.get_pyro_traceback()))
-        self.logger.debug("LRM: finished %d" % duration)
 
         
 def create_arg_parser():

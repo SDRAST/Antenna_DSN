@@ -52,7 +52,9 @@ class OffsetRateThread(util.PausableThread):
 
 
 class WeatherThread(util.PausableThread):
-
+    """
+    gets weather data for antenna location
+    """
     def __init__(self, parent, update_rate=20.0, queue=None):
         super(WeatherThread, self).__init__()
         self.parent = parent
@@ -88,7 +90,11 @@ class WeatherThread(util.PausableThread):
 
 
 class PointThread(util.PausableThread):
-
+    """
+    updates antenna az/el, or ra/dec if commanded in az/el, every second.
+    
+    The second case has not yet been implemented.
+    """
     def __init__(self, parent, coord,
                     coord_type="RADEC",
                     slew_rate=0.23,
@@ -119,8 +125,9 @@ class PointThread(util.PausableThread):
             body._dec = float(coord[1]) / convert
             body._epoch = ephem.now()
             observer.epoch = ephem.now()
-            self.parent.logger.debug("PointThread: body._ra: {}, body._dec: {}".format(
-                convert*body._ra, convert*body._dec
+            self.parent.logger.debug(
+                     "PointThread.__init__: body._ra: {}, body._dec: {}".format(
+                     convert*body._ra, convert*body._dec
             ))
 
             def calc_commanded_azel():
@@ -147,7 +154,7 @@ class PointThread(util.PausableThread):
 
         while self._running_event.is_set():
             if self._stop_event.is_set():
-                self.parent.logger.debug("PointThread: stopping thread")
+                self.parent.logger.debug("PointThread.run: stopping current thread")
                 self._running_event.clear()
 
             commanded_az, commanded_el = self.calc_commanded_azel()
@@ -560,7 +567,9 @@ class SimulatedAntenna(DSS):
             self.weather_thread._stop_event.set()
             self.weather_thread.join()
 
-        self.weather_thread = self._start_thread(WeatherThread, thread_args=(self,), thread_kwargs={"update_rate":300})
+        self.weather_thread = self._start_thread(WeatherThread,
+                                                 thread_args=(self,), 
+                                                 thread_kwargs={"update_rate":300})
 
     def _start_thread(self, thread_cls, thread_args=None, thread_kwargs=None):
         if thread_args is None: thread_args = ()
@@ -599,10 +608,14 @@ class NMCRequestHandler(socketserver.BaseRequestHandler):
                 resp = antenna.process_request(accum)
                 self.logger.debug("handle: resp is %s", type(resp))
                 self.logger.debug("handle: resp=%s", resp)
-                if type(resp) == bytes:
+                # sockets now require bytes
+                if type(resp) == str:
+                  self.request.send(bytes(resp, encoding='utf-8'))
+                elif type(resp) == bytes:
                   self.request.send(resp)
                 else:
-                  self.request.send(bytes(resp, encoding='utf-8'))
+                  # null byte
+                  self.request.send(bytes.fromhex('00'))
                 self.logger.debug("handle: sent {} to client at {}".format(
                                 resp, time.strftime("%H:%M:%S", time.gmtime())))
             except Exception as err:
