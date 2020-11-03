@@ -128,7 +128,7 @@ import socket
 import sys
 import time
 
-
+import Astronomy.DSN_coordinates as DSN
 from MonitorControl.Antenna.DSN.simulator import FakeAntenna
 from support.pyro.socket_error import register_socket_error
 from support.pyro.pyro5_server import Pyro5Server
@@ -1163,7 +1163,7 @@ def main(server_cls):
         level = logging.DEBUG
         if not parsed.verbose:
             level = logging.INFO
-        # logdir = "/home/ops/roach_data/sao_test_data/logdir/"
+            
         logdir = "/usr/local/Logs/"+socket.gethostname()
         if not os.path.exists(logdir):
             logdir = os.path.dirname(os.path.abspath(__file__))
@@ -1173,11 +1173,14 @@ def main(server_cls):
                 server_cls.__name__, timestamp
             )
         )
+        dss = parsed.dss
+        site = DSN.complexID[DSN.DSN_complex_of(dss)]
         setup_logging(logLevel=level, logfile=logfile)
+        
         server = server_cls(
             wsn=parsed.wsn,
-            dss=parsed.dss,
-            site=parsed.site,
+            dss=dss,
+            site=site,
             logLevel=level,
             simulated=parsed.s
         )

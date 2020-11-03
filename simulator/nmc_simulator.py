@@ -666,9 +666,9 @@ if __name__ == "__main__":
     if parsed.verbose:
         level = logging.DEBUG
         
-    #if parsed.dss:
-    #  antenna = SimulatedAntenna(int(parsed.dss))
-    #  log_dir = "/usr/local/Logs/dss"+parsed.dss
+    if parsed.dss:
+      antenna = SimulatedAntenna(int(parsed.dss))
+      log_dir = "/usr/local/Logs/dss"+parsed.dss
       
     antenna.logger.setLevel(level)
 
@@ -677,7 +677,7 @@ if __name__ == "__main__":
     timestamp = datetime.datetime.utcnow().strftime("%Y-%j-%Hh%Mm%Ss")
     setup_logging(
         logLevel=level,
-        logfile=os.path.join(log_dir, "NMC_sim43_{}.log".format(timestamp))
+        logfile=os.path.join(log_dir, "NMC_simulator_{}.log".format(timestamp))
     )
     address = ("localhost",6700+int(parsed.dss))
     server = NMCServer(address, NMCRequestHandler)
